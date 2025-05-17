@@ -3,6 +3,9 @@
 > **SPXBenchmark** – Compare a stock’s multi-horizon returns vs. the S\&P 500, compute alpha, beta and delta in one shot.
 
 ---
+## Summary
+SPXBenchmark é um utilitário Python que coleta dados históricos de qualquer ação e do S&P 500 em múltiplos horizontes (5 y, 1 y, YTD, 3 m, 1 m, 1 s, 1 d), calcula retornos totais, delta, e estima alfa e beta via regressão OLS. Building AI course project
+
 
 # SPXBenchmark
 
