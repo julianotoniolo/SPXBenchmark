@@ -1,78 +1,75 @@
-**Repository Description (GitHub “short description”)**
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import date
+import statsmodels.api as sm
 
-> **SPXBenchmark** – Compare a stock’s multi-horizon returns vs. the S\&P 500, compute alpha, beta and delta in one shot.
+def get_returns(ticker, period=None, start=None, end=None):
+    """Retorna série de preços ajustados e o retorno total."""
+    tk = yf.Ticker(ticker)
+    if period:
+        df = tk.history(period=period)
+    else:
+        df = tk.history(start=start, end=end)
+    prices = df["Close"]
+    total_return = prices.iloc[-1] / prices.iloc[0] - 1
+    return prices, total_return
 
----
+def compute_alpha_beta(r_asset, r_spx):
+    """
+    Faz regressão r_asset ~ alpha + beta * r_spx
+    Retorna (alpha, beta).
+    """
+    # alinhar índices
+    df = pd.concat([r_asset, r_spx], axis=1).dropna()
+    y = df.iloc[:,0]
+    X = sm.add_constant(df.iloc[:,1])
+    model = sm.OLS(y, X).fit()
+    return model.params["const"], model.params[df.columns[1]]
 
-# SPXBenchmark
+def compare_to_spx(ticker):
+    spx_ticker = "^GSPC"
+    today = date.today().isoformat()
+    periods = {
+        "5y": {"period":"5y"},
+        "1y": {"period":"1y"},
+        "YTD": {"start": f"{today[:4]}-01-01", "end": today},
+        "3mo": {"period":"3mo"},
+        "1mo": {"period":"1mo"},
+        "1w":  {"period":"7d"},
+        "1d":  {"period":"1d"},
+    }
+    results = []
 
-## Idea in a Nutshell
+    # coleta série diária pra regressão
+    prices_asset, _ = get_returns(ticker, period="5y")
+    prices_spx,   _ = get_returns(spx_ticker, period="5y")
+    # retorna série de retornos diários
+    r_asset = prices_asset.pct_change().dropna()
+    r_spx   = prices_spx.pct_change().dropna()
+    alpha, beta = compute_alpha_beta(r_asset, r_spx)
 
-**SPXBenchmark** is a command-line Python tool that, given any stock ticker, will fetch its adjusted closing prices alongside the S\&P 500 (`^GSPC`), compute total returns over 5 years, 1 year, YTD, 3 months, 1 month, 1 week, and 1 day—and then estimate the stock’s **alpha** and **beta** against the S\&P 500 using a simple OLS regression on daily returns.
+    for name, opts in periods.items():
+        pa, ra = get_returns(ticker, **opts)
+        ps, rs = get_returns(spx_ticker, **opts)
+        delta = ra - rs
+        results.append({
+            "Periodo": name,
+            "Retorno_Ativo": ra,
+            "Retorno_SPX":  rs,
+            "Delta":        delta
+        })
 
-## Background
+    df = pd.DataFrame(results).set_index("Periodo")
+    df["Alpha"] = alpha   # fixa alfa calculado sobre 5 anos
+    df["Beta"]  = beta
+    return df
 
-Many investors—and even quants—want a quick, consolidated view of how a ticker has performed relative to the broader market (S\&P 500).
+if __name__ == "__main__":
+    ticker = input("Informe o ticker da ação: ").strip().upper()
+    df = compare_to_spx(ticker)
+    print(df.to_markdown(floatfmt=".2%"))
 
-* **Problem**: Manually pulling multiple date-ranges, calculating returns, and running regressions is tedious and error-prone.
-* **Frequency**: Every portfolio manager or retail investor faces this when evaluating stocking picking performance.
-* **Motivation**: I wanted a reproducible, scriptable way to benchmark any stock in seconds, without clicking through charts.
-* **Importance**: Alpha and beta are core metrics in modern portfolio theory; regular benchmarking helps detect underperformance early.
 
-## Data & AI Techniques
-
-* **Data sources**:
-
-  * [Yahoo Finance via `yfinance`](https://github.com/ranaroussi/yfinance) for historical adjusted close prices.
-  * S\&P 500 index ticker `^GSPC` from the same source.
-* **Techniques**:
-
-  * **Time-series return computation** for multiple horizons.
-  * **Ordinary least squares (OLS) regression** (via `statsmodels`) to estimate alpha (intercept) and beta (sensitivity) on daily returns.
-  * Although not “deep” AI, regression is a foundational supervised-learning technique.
-
-## How It’s Used
-
-1. **Installation**
-
-   ```bash
-   pip install yfinance pandas statsmodels
-   ```
-2. **Run the script**
-
-   ```bash
-   python spxbenchmark.py
-   ```
-3. **Input**
-
-   * You’ll be prompted for a stock ticker (e.g. `AAPL`).
-4. **Output**
-
-   * A Markdown-formatted table of returns for each period, the S\&P 500 return, the delta (stock minus SPX), plus the computed alpha and beta.
-5. **Who Benefits**
-
-   * **Individual investors** wanting a quick relative return summary.
-   * **Advisors/analysts** needing a reproducible benchmark check before deeper fundamental or technical analysis.
-
-## Challenges & Limitations
-
-* **Data reliability**: Relies on Yahoo Finance; downtime or data gaps will break the script.
-* **Survivorship bias**: Only tickers currently trading are fetched—delisted symbols are out of scope.
-* **Linear model assumption**: OLS assumes a linear relationship. During market crises, beta may change, and a single-period regression may not capture time-varying risk.
-* **No error bars**: Returns and regression assume point estimates; there’s no confidence interval in the table.
-
-## What’s Next
-
-* **Rolling-window betas** (e.g. 6-month beta) to capture changing correlations.
-* **Interactive dashboard** with `Streamlit` or `Voila` to visualize equity vs. SPX over time.
-* **Extended factors**: Compute exposures to Fama-French factors (size, value, momentum).
-* **Batch mode**: Accept a list of tickers to produce a multi-stock benchmarking report in Excel or PDF.
-
-## Acknowledgments
-
-* **YFinance** by Ran Aroussi for free historical data.
-* **Statsmodels** for the OLS regression framework.
-* Inspiration: the “Alpha and Beta” section in *Modern Portfolio Theory* texts and many online quant tutorials.
-* README structure based on GitHub community best practices and the University of Helsinki’s “Building AI” course guidance.
 
     
